@@ -1,0 +1,23 @@
+# Per-tenant configuration for ClaimSight.
+#
+# Not wired up yet - app/config/loader.py (Week 1, Day 4) will read this.
+# It's checked in now so the schema in schemas.py can be designed against
+# a real example of what varies per client, instead of guessing later.
+
+tenant_id: acme_insurance
+display_name: "Acme Insurance Co."
+
+accepted_document_types:
+  - accident_report
+  - policy_document
+  - medical_bill
+
+# Confidence threshold below which a field routes to human review.
+# Acme is a pilot client -> conservative threshold, more human review,
+# fewer auto-approvals until trust in the model is established.
+review_threshold: 0.85
+
+# Tenant-specific field label overrides. Acme's source systems call
+# "policy_number" a "member ID" - this is where that mapping will live.
+field_label_overrides:
+  policy_number: "Member ID"

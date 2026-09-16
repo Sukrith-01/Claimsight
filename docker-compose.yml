@@ -1,0 +1,34 @@
+# Day 1: API service only.
+#
+# Coming in later weeks (left as comments so the file documents the plan,
+# not just the current state):
+#   - chroma: vector DB for retrieval (Week 2)
+#   - prometheus + grafana: monitoring stack (Week 3)
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/code/app
+      - ./configs:/code/configs
+    environment:
+      - ENV=development
+
+  # chroma:
+  #   image: chromadb/chroma:latest
+  #   ports:
+  #     - "8001:8000"
+
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   ports:
+  #     - "3000:3000"
