@@ -6,9 +6,11 @@ structured data, scores confidence per field, and routes low-confidence
 extractions to human review — with per-client schemas driven by config,
 not forked code.
 
-**Status:** Day 1 — project scaffold. API skeleton, core data schema, and
-CI are live. Extraction, retrieval, and the review workflow land over the
-next 3 weeks; see `PROGRESS.md` for the running log.
+**Status:** Day 2 — document ingestion (OCR) live. API skeleton, core data
+schema, native PDF text extraction with automatic OCR fallback for
+scanned documents, and CI are all working. Structured extraction,
+retrieval, and the review workflow land over the next weeks; see
+`PROGRESS.md` for the running log.
 
 ## Architecture (target — most pieces not built yet)
 
@@ -43,6 +45,7 @@ flowchart TB
 
 ```bash
 pip install -r requirements.txt
+python scripts/generate_sample_docs.py   # creates data/sample_docs/
 uvicorn app.main:app --reload
 ```
 
@@ -50,7 +53,15 @@ Then:
 - `GET /health` — liveness check
 - `GET /` — service info
 - `GET /schema/claim-document` — current `ClaimDocument` JSON schema
+- `POST /ingest` — upload a PDF or image, get back extracted text plus
+  which extraction method was used (native vs. OCR fallback)
 - `GET /docs` — interactive API docs (FastAPI auto-generated)
+
+Try the OCR fallback path specifically:
+```bash
+curl -X POST http://localhost:8000/ingest \
+  -F "file=@data/sample_docs/accident_report_scanned.pdf"
+```
 
 ## Run it via Docker
 
