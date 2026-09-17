@@ -46,3 +46,40 @@ matter for lossless fidelity over one that's 10x smaller for a use case
 remembering any time a task involves generating or storing document
 images: match the compression to what the image is actually needed
 for, not just whatever the library defaults to.
+
+---
+
+## Day 4 — CI silently failing since Day 2, only just noticed
+
+**What broke:** GitHub Actions' `tests / pytest` job started failing the
+moment OCR tests were added — that's **Day 2**, not today. It kept
+failing on Day 3's push too. It just wasn't caught until Day 4, when a
+GitHub notification email finally got noticed.
+
+**Root cause:** `.github/workflows/tests.yml` (written Day 1, before any
+OCR code existed) only ran `pip install -r requirements.txt`. It never
+installed the actual `tesseract` binary on the CI runner. `pytesseract`
+is a thin Python wrapper — it calls out to a real Tesseract program that
+has to exist on the machine separately, the same binary that needed a
+manual installer on Windows locally. GitHub's runner starts from a bare
+Ubuntu image every run; nothing outside `requirements.txt` exists there
+unless a workflow step explicitly installs it.
+
+**Fix:** added a `sudo apt-get install -y tesseract-ocr` step to the
+workflow, before the pip install, so the runner has the same OCR engine
+locally-installed via UB-Mannheim's installer.
+
+**Category:** environment drift between "works on my machine" and CI —
+the same root category as the Python 3.14 pydantic-core failure from
+Day 2, just showing up on the CI side instead of the local dev side this
+time. General principle worth keeping: any dependency that isn't a pure
+Python package (a system binary, an OS library, a compiler) needs to be
+explicitly installed in EVERY environment that runs the code — local
+machine, CI, and later the Docker container — not just the one you
+happened to set up by hand first.
+
+**Process lesson, not just a technical one:** a CI failure that sits
+unnoticed for two days provides zero value — the whole point of gating
+on CI is catching problems before they compound, not after. Going
+forward: check the Actions tab (or the email) right after every push,
+not "whenever."

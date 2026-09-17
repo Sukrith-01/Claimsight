@@ -103,3 +103,13 @@ real-world extracted text, not just clean synthetic strings.
 object (still Week 2 — classification tells us *what* the document is,
 not what's inside it), the client config loader, and structured field
 extraction.
+
+---
+
+## Day 4 (interim) — Fixed CI, silently broken since Day 2
+
+Before starting Day 4's actual scope: discovered `tests / pytest` on
+GitHub Actions has been failing since Day 2's push (OCR tests added,
+`tesseract-ocr` never installed on the CI runner). Fixed the workflow.
+Full writeup in `MISTAKES.md`. Lesson banked: check the Actions tab
+right after every push, don't rely on noticing the email eventually.
