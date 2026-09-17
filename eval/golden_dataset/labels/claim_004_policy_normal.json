@@ -1,0 +1,8 @@
+{
+  "example_id": "claim_004_policy_normal",
+  "document_type": "policy_document",
+  "expected_fields": {
+    "policyholder": "James Whitfield",
+    "policy_number": "ACM-1182734"
+  }
+}

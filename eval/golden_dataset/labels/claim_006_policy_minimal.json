@@ -1,0 +1,7 @@
+{
+  "example_id": "claim_006_policy_minimal",
+  "document_type": "policy_document",
+  "expected_fields": {
+    "policyholder": "Tom Reyes"
+  }
+}

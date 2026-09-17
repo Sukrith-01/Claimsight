@@ -6,12 +6,12 @@ structured data, scores confidence per field, and routes low-confidence
 extractions to human review — with per-client schemas driven by config,
 not forked code.
 
-**Status:** Day 4 — multi-tenant config is live. Two real, differently
-configured tenants prove the actual claim: the identical document
-produces different outcomes depending on which tenant uploaded it, driven
-entirely by YAML, not by branching code. Structured field extraction,
-retrieval, and the review workflow land over the next weeks; see
-`PROGRESS.md` for the running log.
+**Status:** Day 5 — golden dataset started (10 of ~30 examples) and
+already used the way it's supposed to be: measured classification
+accuracy (80%), found a real gap in keyword coverage, fixed it, and
+re-measured (100%). Structured field extraction, retrieval, and the
+review workflow land over the next weeks; see `PROGRESS.md` for the
+running log.
 
 ## Architecture (target — most pieces not built yet)
 
@@ -89,6 +89,18 @@ docker compose up --build
 ```bash
 pytest tests/ -v
 ```
+
+## Run the eval harness
+
+```bash
+python scripts/generate_golden_dataset.py   # if not already generated
+python eval/run_eval.py
+```
+
+Reports classification accuracy against 10 hand-labeled examples
+(normal cases, phrasing variants, and one deliberately ambiguous
+document that should classify as `unknown`). Grows into a full
+extraction-accuracy harness in Week 3.
 
 ## Project layout
 

@@ -1,0 +1,8 @@
+{
+  "example_id": "claim_001_accident_normal",
+  "document_type": "accident_report",
+  "expected_fields": {
+    "claimant_name": "James Whitfield",
+    "policy_number": "ACM-1182734"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "example_id": "claim_003_accident_minimal",
+  "document_type": "accident_report",
+  "expected_fields": {
+    "claimant_name": "Tom Reyes"
+  }
+}

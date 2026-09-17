@@ -1,0 +1,8 @@
+{
+  "example_id": "claim_008_medical_phrasing_variant",
+  "document_type": "medical_bill",
+  "expected_fields": {
+    "patient_name": "Priya Nair",
+    "total_billed": "$615.00"
+  }
+}

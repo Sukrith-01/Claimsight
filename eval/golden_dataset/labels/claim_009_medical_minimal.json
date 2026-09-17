@@ -1,0 +1,7 @@
+{
+  "example_id": "claim_009_medical_minimal",
+  "document_type": "medical_bill",
+  "expected_fields": {
+    "patient_name": "Tom Reyes"
+  }
+}

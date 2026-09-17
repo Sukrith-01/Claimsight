@@ -1,0 +1,8 @@
+{
+  "example_id": "claim_007_medical_normal",
+  "document_type": "medical_bill",
+  "expected_fields": {
+    "patient_name": "James Whitfield",
+    "total_billed": "$2,140.00"
+  }
+}

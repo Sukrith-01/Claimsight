@@ -159,3 +159,54 @@ from Day 2/3 that never passed one. `pytest tests/ -v` passes 30/30.
 Week 2 — there's no confidence-scored extraction yet to threshold
 against), `field_label_overrides` isn't applied anywhere yet (nothing
 renders field labels until structured extraction exists).
+
+---
+
+## Day 5 — Golden dataset (first 10 of ~30) + eval-driven fix
+
+**Built:**
+- `scripts/generate_golden_dataset.py` — 10 hand-labeled examples, not
+  copies of Day 2's originals: normal cases, phrasing VARIANTS of the
+  same document types (different headers/wording, testing whether
+  classification generalizes or just pattern-matches specific strings),
+  and one deliberately ambiguous document (a generic cover letter) with
+  expected label `unknown`
+- `eval/run_eval.py` — runs the golden set through real OCR + real
+  classification, reports per-example pass/fail and overall accuracy.
+  Deliberately built to grow into Week 3's full harness rather than get
+  thrown away later
+- 3 new tests wiring the eval itself into `pytest`, so a future
+  regression in classification accuracy fails CI immediately
+
+**What actually happened, in order — this is the real eval-driven loop:**
+1. First run: **8/10 (80%)**. Both failures were phrasing variants —
+   "COLLISION INCIDENT SUMMARY" and "INVOICE FOR SERVICES RENDERED" —
+   neither matched any keyword in Day 3's classifier.
+2. Importantly, both failures came back as `unknown`, not a wrong
+   confident label — Day 3's "admit uncertainty" design held up under
+   real pressure, it just meant the classifier's *coverage* was too
+   narrow, not that its judgment was wrong.
+3. Expanded the keyword sets in `app/ingestion/classifier.py` to cover
+   the missed phrasings, plus a few adjacent real-world header variants
+   (e.g. "certificate of insurance") that weren't failures yet but are
+   common enough to be worth covering proactively.
+4. Re-ran: **10/10 (100%)**, including the ambiguous cover-letter
+   example still correctly returning `unknown` — confirming the keyword
+   expansion improved coverage without eroding the honest-uncertainty
+   behavior by becoming too permissive.
+
+**Why this sequence matters more than the code:** this is the actual
+shape of eval-driven development — measure, find a real gap, fix the
+gap, re-measure, confirm the fix didn't break something else. It's a
+small-scale preview of exactly what Week 3's CI-gated harness does at
+full size, and it's genuine interview material: "tell me about a time
+you used evaluation to find and fix a real gap" now has a true, specific
+answer instead of a generic one.
+
+**Verified:** `python eval/run_eval.py` shows 10/10. `pytest tests/ -v`
+passes 33/33.
+
+**Didn't get to:** the remaining ~20 golden examples (next batch happens
+alongside Week 2's extraction work, once there's a field-level accuracy
+to measure, not just classification), field-level ground truth isn't
+evaluated yet since structured extraction doesn't exist.

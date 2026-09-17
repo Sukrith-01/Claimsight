@@ -1,0 +1,8 @@
+{
+  "example_id": "claim_005_policy_phrasing_variant",
+  "document_type": "policy_document",
+  "expected_fields": {
+    "policyholder": "Priya Nair",
+    "policy_number": "ACM-9982211"
+  }
+}
