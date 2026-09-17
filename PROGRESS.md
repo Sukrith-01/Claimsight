@@ -63,3 +63,43 @@ apt) is untested in this environment — no Docker available here to build
 and run it. Verify with `docker compose up --build` before relying on
 the containerized path; if that surfaces an issue, it's a legitimate
 Day 3 "Trouble" entry, not something to assume works.
+
+---
+
+## Day 3 — Document classification
+
+**Built:**
+- `app/ingestion/classifier.py` — keyword-scoring classifier (accident
+  report / policy document / medical bill), deliberately NOT an LLM call
+- Wired into `/ingest`: response now includes `document_type`,
+  `classification_confidence`, and raw per-type `classification_scores`
+- 9 new tests, including a negative case (unrelated text must classify
+  as `unknown`, never a wrong confident guess) and a parametrized check
+  that all 4 real sample docs — including the OCR-derived scanned one —
+  classify correctly through the full HTTP endpoint
+
+**Decision worth remembering:** classification is rule-based, not an LLM
+call, on purpose. It's free, instant, deterministic, and testable without
+mocking an API — and it runs on *every* document before anything else
+happens, so latency and cost compound fast if this step alone calls an
+LLM. Just as important: it gives a real baseline. When an LLM-based
+classifier gets considered later (for messier formats this can't handle),
+there's now something concrete to measure it against, instead of
+swapping in something more expensive on faith that it's better.
+
+The other deliberate choice: unrelated/garbage text returns `unknown`
+with 0.0 confidence rather than the closest-matching label. A
+classifier that always outputs *something* looks more impressive in a
+demo and is worse in production — it silently routes documents into the
+wrong extraction schema with no signal that anything went wrong.
+
+**Verified:** ran all 4 real sample documents through the live `/ingest`
+endpoint (not just unit tests) — all classified correctly, including the
+OCR-derived scanned document, proving the classifier works on noisy
+real-world extracted text, not just clean synthetic strings.
+`pytest tests/ -v` passes 18/18.
+
+**Didn't get to:** wiring `document_type` into an actual `ClaimDocument`
+object (still Week 2 — classification tells us *what* the document is,
+not what's inside it), the client config loader, and structured field
+extraction.

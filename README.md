@@ -6,11 +6,12 @@ structured data, scores confidence per field, and routes low-confidence
 extractions to human review — with per-client schemas driven by config,
 not forked code.
 
-**Status:** Day 2 — document ingestion (OCR) live. API skeleton, core data
-schema, native PDF text extraction with automatic OCR fallback for
-scanned documents, and CI are all working. Structured extraction,
-retrieval, and the review workflow land over the next weeks; see
-`PROGRESS.md` for the running log.
+**Status:** Day 3 — ingestion + classification live. API skeleton, core
+data schema, native PDF text extraction with OCR fallback, document
+classification (accident report / policy document / medical bill), and
+CI are all working. Structured field extraction, retrieval, and the
+review workflow land over the next weeks; see `PROGRESS.md` for the
+running log.
 
 ## Architecture (target — most pieces not built yet)
 
@@ -53,8 +54,10 @@ Then:
 - `GET /health` — liveness check
 - `GET /` — service info
 - `GET /schema/claim-document` — current `ClaimDocument` JSON schema
-- `POST /ingest` — upload a PDF or image, get back extracted text plus
-  which extraction method was used (native vs. OCR fallback)
+- `POST /ingest` — upload a PDF or image, get back extracted text, which
+  extraction method was used (native vs. OCR fallback), and which type of
+  claim document it is (accident report / policy document / medical
+  bill) with a classification confidence score
 - `GET /docs` — interactive API docs (FastAPI auto-generated)
 
 Try the OCR fallback path specifically:

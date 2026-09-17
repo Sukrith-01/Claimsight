@@ -3,9 +3,12 @@ ClaimSight API entrypoint.
 
 Day 1: health check + schema introspection.
 Day 2: document ingestion (/ingest) - upload a PDF or image, get back
-extracted text plus which extraction method was used. No structured
-extraction yet - that's Week 2, once there's an extraction layer that
-consumes this raw text and maps it onto ClaimDocument.
+extracted text plus which extraction method was used.
+Day 3: document classification wired into /ingest - now also returns
+which type of claim document this is (accident report / policy / medical
+bill), with a confidence score. Structured field extraction is still
+Week 2 - classification only tells us WHAT the document is, not what's
+inside it yet.
 """
 
 import tempfile
@@ -15,11 +18,12 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 
 from app.models.schemas import ClaimDocument
 from app.ingestion.ocr import extract_text
+from app.ingestion.classifier import classify_document
 
 app = FastAPI(
     title="ClaimSight",
     description="Multi-tenant insurance claims document intelligence platform.",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp"}
@@ -28,7 +32,7 @@ SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp"}
 @app.get("/health")
 def health() -> dict:
     """Liveness check. Docker/orchestrators hit this to confirm the service is up."""
-    return {"status": "ok", "service": "claimsight", "version": "0.2.0"}
+    return {"status": "ok", "service": "claimsight", "version": "0.3.0"}
 
 
 @app.get("/schema/claim-document")
@@ -41,14 +45,13 @@ def claim_document_schema() -> dict:
 async def ingest_document(file: UploadFile = File(...)) -> dict:
     """
     Upload a claim document (PDF or image) and get back the raw extracted
-    text, plus which extraction method was used (native text layer vs.
-    OCR fallback) and how many pages needed OCR.
+    text, the extraction method used, AND (new as of Day 3) which type of
+    claim document this is, with a classification confidence score.
 
-    This is intentionally the FULL response shape for now, not hidden
-    behind a black box - in a client-facing system, showing which
-    documents needed OCR (slower, occasionally noisier) vs. native
-    extraction (fast, exact) is diagnostic information worth surfacing,
-    not an implementation detail to bury.
+    If classification confidence is low, `document_type` comes back as
+    "unknown" rather than a guessed label - an honest "not sure" is more
+    useful downstream than a wrong confident answer, because Week 2's
+    extraction layer will pick which schema to apply based on this field.
     """
     suffix = Path(file.filename).suffix.lower()
     if suffix not in SUPPORTED_EXTENSIONS:
@@ -63,20 +66,25 @@ async def ingest_document(file: UploadFile = File(...)) -> dict:
         tmp_path = tmp.name
 
     try:
-        result = extract_text(tmp_path)
+        extraction = extract_text(tmp_path)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Extraction failed: {e}")
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
+    classification = classify_document(extraction.text)
+
     return {
         "filename": file.filename,
-        "extraction_method": result.method,
-        "page_count": result.page_count,
-        "pages_requiring_ocr": result.pages_ocr_count,
-        "char_count": len(result.text),
-        "text_preview": result.text[:500],
-        "full_text": result.text,
+        "extraction_method": extraction.method,
+        "page_count": extraction.page_count,
+        "pages_requiring_ocr": extraction.pages_ocr_count,
+        "char_count": len(extraction.text),
+        "document_type": classification.document_type.value,
+        "classification_confidence": classification.confidence,
+        "classification_scores": classification.scores,
+        "text_preview": extraction.text[:500],
+        "full_text": extraction.text,
     }
 
 
@@ -88,4 +96,5 @@ def root() -> dict:
         "health": "/health",
         "endpoints": ["/health", "/schema/claim-document", "/ingest"],
     }
+
 
