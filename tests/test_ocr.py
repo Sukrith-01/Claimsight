@@ -56,6 +56,7 @@ def test_ingest_endpoint_native_pdf():
         response = client.post(
             "/ingest",
             files={"file": ("policy_document_sample.pdf", f, "application/pdf")},
+            data={"tenant_id": "acme_insurance"},
         )
     assert response.status_code == 200
     body = response.json()
@@ -68,6 +69,7 @@ def test_ingest_endpoint_scanned_pdf():
         response = client.post(
             "/ingest",
             files={"file": ("accident_report_scanned.pdf", f, "application/pdf")},
+            data={"tenant_id": "acme_insurance"},
         )
     assert response.status_code == 200
     body = response.json()
@@ -79,5 +81,6 @@ def test_ingest_endpoint_rejects_unsupported_type():
     response = client.post(
         "/ingest",
         files={"file": ("notes.txt", b"plain text content", "text/plain")},
+        data={"tenant_id": "acme_insurance"},
     )
     assert response.status_code == 400

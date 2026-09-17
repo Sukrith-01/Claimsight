@@ -70,7 +70,11 @@ def test_empty_text_returns_unknown():
 )
 def test_ingest_endpoint_classifies_real_samples_correctly(filename, expected_type):
     with open(f"{SAMPLE_DIR}/{filename}", "rb") as f:
-        response = client.post("/ingest", files={"file": (filename, f, "application/pdf")})
+        response = client.post(
+            "/ingest",
+            files={"file": (filename, f, "application/pdf")},
+            data={"tenant_id": "acme_insurance"},
+        )
     assert response.status_code == 200
     body = response.json()
     assert body["document_type"] == expected_type

@@ -6,12 +6,12 @@ structured data, scores confidence per field, and routes low-confidence
 extractions to human review — with per-client schemas driven by config,
 not forked code.
 
-**Status:** Day 3 — ingestion + classification live. API skeleton, core
-data schema, native PDF text extraction with OCR fallback, document
-classification (accident report / policy document / medical bill), and
-CI are all working. Structured field extraction, retrieval, and the
-review workflow land over the next weeks; see `PROGRESS.md` for the
-running log.
+**Status:** Day 4 — multi-tenant config is live. Two real, differently
+configured tenants prove the actual claim: the identical document
+produces different outcomes depending on which tenant uploaded it, driven
+entirely by YAML, not by branching code. Structured field extraction,
+retrieval, and the review workflow land over the next weeks; see
+`PROGRESS.md` for the running log.
 
 ## Architecture (target — most pieces not built yet)
 
@@ -54,16 +54,28 @@ Then:
 - `GET /health` — liveness check
 - `GET /` — service info
 - `GET /schema/claim-document` — current `ClaimDocument` JSON schema
-- `POST /ingest` — upload a PDF or image, get back extracted text, which
-  extraction method was used (native vs. OCR fallback), and which type of
-  claim document it is (accident report / policy document / medical
-  bill) with a classification confidence score
+- `GET /tenants` — list configured tenants
+- `GET /tenants/{tenant_id}` — inspect one tenant's config
+- `POST /ingest` — upload a PDF/image + a `tenant_id`, get back extracted
+  text, extraction method, classified document type, and whether that
+  document type is `in_scope_for_tenant` per that tenant's config
 - `GET /docs` — interactive API docs (FastAPI auto-generated)
+
+See the actual multi-tenant behavior — same file, different tenant, different result:
+```bash
+curl -X POST http://localhost:8000/ingest \
+  -F "file=@data/sample_docs/medical_bill_sample.pdf" -F "tenant_id=acme_insurance"
+# -> in_scope_for_tenant: true (Acme's contract covers medical bills)
+
+curl -X POST http://localhost:8000/ingest \
+  -F "file=@data/sample_docs/medical_bill_sample.pdf" -F "tenant_id=beta_insurance"
+# -> in_scope_for_tenant: false (Beta's contract doesn't)
+```
 
 Try the OCR fallback path specifically:
 ```bash
 curl -X POST http://localhost:8000/ingest \
-  -F "file=@data/sample_docs/accident_report_scanned.pdf"
+  -F "file=@data/sample_docs/accident_report_scanned.pdf" -F "tenant_id=acme_insurance"
 ```
 
 ## Run it via Docker

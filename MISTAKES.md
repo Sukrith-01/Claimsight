@@ -49,6 +49,36 @@ for, not just whatever the library defaults to.
 
 ---
 
+## Day 4 — Making an endpoint parameter required broke 6 existing tests
+
+**What broke:** adding a required `tenant_id` field to `/ingest` (the
+whole point of Day 4's multi-tenant work) caused 6 tests from Day 2 and
+Day 3 to fail with `422 Unprocessable Entity` instead of their expected
+status codes. Every one of those tests uploaded a file without a
+`tenant_id`, which was legal before Day 4 and isn't anymore.
+
+**Root cause:** changing a shared endpoint's contract (making a
+previously-optional-by-default parameter required) affects every
+existing caller of that endpoint, including tests written before the
+change existed. This isn't a bug in the new code - the new code did
+exactly what it was supposed to. It's a consequence that has to be
+tracked down and fixed everywhere the old contract was assumed.
+
+**Fix:** updated the 6 affected tests in `test_ocr.py` and
+`test_classifier.py` to pass `tenant_id: "acme_insurance"` alongside the
+file upload, matching the new contract.
+
+**Category:** breaking-change ripple effect. The general principle:
+whenever an endpoint's required parameters change, immediately search
+the test suite (and, in a real system, any documented API contract or
+client SDK) for every call site, not just the ones related to the
+feature being worked on. Running the FULL test suite after a change -
+not just the tests for the thing just built - is exactly how this kind
+of ripple gets caught before it reaches anyone else. It did, here,
+in under a minute.
+
+---
+
 ## Day 4 — CI silently failing since Day 2, only just noticed
 
 **What broke:** GitHub Actions' `tests / pytest` job started failing the

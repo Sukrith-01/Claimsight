@@ -1,0 +1,23 @@
+# Second tenant, deliberately configured differently from Acme to prove
+# the config loader actually produces per-tenant behavior, not just a
+# second copy of the same settings with a new name.
+#
+# Beta only handles auto accident/policy claims - no medical billing
+# line of business - and is a longer-standing client than Acme's pilot,
+# so it runs a looser review threshold (more auto-approval, less human
+# review overhead).
+
+tenant_id: beta_insurance
+display_name: "Beta Mutual Insurance"
+
+accepted_document_types:
+  - accident_report
+  - policy_document
+  # medical_bill deliberately excluded - Beta's contract doesn't cover
+  # medical claims processing. A medical bill uploaded for this tenant
+  # should be flagged as out-of-scope, not silently extracted anyway.
+
+review_threshold: 0.70
+
+field_label_overrides:
+  policy_number: "Policy #"

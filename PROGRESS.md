@@ -113,3 +113,49 @@ GitHub Actions has been failing since Day 2's push (OCR tests added,
 `tesseract-ocr` never installed on the CI runner). Fixed the workflow.
 Full writeup in `MISTAKES.md`. Lesson banked: check the Actions tab
 right after every push, don't rely on noticing the email eventually.
+
+---
+
+## Day 4 — Client config loader (multi-tenant)
+
+**Built:**
+- `app/config/schemas.py` — `ClientConfig` Pydantic model: tenant_id,
+  display_name, accepted document types, review threshold, field label
+  overrides
+- `app/config/loader.py` — loads and validates per-tenant YAML, with an
+  in-process cache, plus two custom exceptions (`TenantNotFoundError`,
+  `InvalidClientConfigError`) instead of letting raw KeyErrors or
+  ValidationErrors leak up
+- A second real tenant config (`client_beta_insurance.yaml`) — genuinely
+  different from Acme's (excludes medical bills, lower review threshold),
+  specifically so the loader's multi-tenant claim has something real to
+  prove against, not just one config file
+- `/ingest` now requires `tenant_id`, checks the classified document type
+  against that tenant's `accepted_document_types`, and returns
+  `in_scope_for_tenant` + `tenant_review_threshold`
+- New `/tenants` and `/tenants/{tenant_id}` endpoints
+- 12 new tests, including the two realistic config-authoring mistakes
+  (tenant_id/filename mismatch, out-of-range threshold) and the actual
+  core proof: the identical medical bill file produces `in_scope: true`
+  for Acme and `in_scope: false` for Beta through the same code path
+
+**Decision worth remembering:** validate `ClientConfig` at LOAD time, not
+at first use. A malformed config for a new client should fail loudly the
+moment it's loaded — ideally the moment it's committed, once CI runs
+against it — not silently three requests deep into that client's first
+day live. Also added a same-file safety check: the internal `tenant_id`
+field must match the filename, specifically because copy-pasting an
+existing tenant's file to onboard a new one and forgetting to update one
+field is exactly the kind of mistake that's easy to make and easy to
+miss without an explicit check for it.
+
+**Verified:** ran the real proof over live HTTP — same file, two tenant
+IDs, genuinely different `in_scope_for_tenant` and `tenant_review_threshold`
+in the response. Also caught and fixed a real regression along the way
+(see `MISTAKES.md`): making `tenant_id` required broke 6 existing tests
+from Day 2/3 that never passed one. `pytest tests/ -v` passes 30/30.
+
+**Didn't get to:** actually using `review_threshold` for anything (still
+Week 2 — there's no confidence-scored extraction yet to threshold
+against), `field_label_overrides` isn't applied anywhere yet (nothing
+renders field labels until structured extraction exists).
