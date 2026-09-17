@@ -4,16 +4,19 @@ ClaimSight API entrypoint.
 Day 1: health check + schema introspection.
 Day 2: document ingestion (/ingest) with OCR.
 Day 3: document classification wired into /ingest.
-Day 4: per-tenant client config. /ingest now requires a tenant_id and
-checks the classified document type against THAT tenant's accepted
-types - this is the actual multi-tenant mechanism: one endpoint, N
-tenants, each configured via YAML rather than a code branch.
+Day 4: per-tenant client config.
+Day 6: chunking + embeddings + vector search. /ingest now also indexes
+the document for later retrieval, and a new /search endpoint queries
+across a tenant's indexed documents - tenant-scoped, so one tenant's
+search never surfaces another tenant's content.
 """
 
 import tempfile
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from pydantic import BaseModel
 
 from app.models.schemas import ClaimDocument
 from app.ingestion.ocr import extract_text
@@ -24,20 +27,33 @@ from app.config.loader import (
     TenantNotFoundError,
     InvalidClientConfigError,
 )
+from app.extraction.retriever import VectorStore
 
 app = FastAPI(
     title="ClaimSight",
     description="Multi-tenant insurance claims document intelligence platform.",
-    version="0.4.0",
+    version="0.6.0",
 )
 
 SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp"}
+
+# Single shared in-process vector store. Fine for dev/single-instance
+# deployment; a multi-instance production deployment would point this at
+# a persistent/shared Chroma instance instead of an in-memory one - noted
+# here rather than silently assumed to already be production-ready.
+vector_store = VectorStore()
+
+
+class SearchRequest(BaseModel):
+    tenant_id: str
+    query: str
+    top_k: int = 3
 
 
 @app.get("/health")
 def health() -> dict:
     """Liveness check. Docker/orchestrators hit this to confirm the service is up."""
-    return {"status": "ok", "service": "claimsight", "version": "0.4.0"}
+    return {"status": "ok", "service": "claimsight", "version": "0.6.0"}
 
 
 @app.get("/schema/claim-document")
@@ -54,12 +70,7 @@ def tenants() -> dict:
 
 @app.get("/tenants/{tenant_id}")
 def tenant_config(tenant_id: str) -> dict:
-    """
-    Inspect one tenant's configuration. Real-world use: a solutions
-    engineer or client integration team hitting this to confirm the
-    config they wrote actually loaded and validated the way they intended,
-    without needing to read YAML or Python source.
-    """
+    """Inspect one tenant's configuration."""
     try:
         config = load_client_config(tenant_id)
     except TenantNotFoundError as e:
@@ -75,18 +86,10 @@ async def ingest_document(
     tenant_id: str = Form(..., description="Which tenant's config to apply"),
 ) -> dict:
     """
-    Upload a claim document for a SPECIFIC tenant. Extraction and
-    classification are the same for everyone; what's tenant-specific is
-    whether the classified document type is one this tenant is configured
-    to accept, and what review threshold applies to it.
-
-    A document classified as a type the tenant hasn't configured for
-    (e.g. a medical bill for a tenant whose contract doesn't cover
-    medical claims) comes back flagged `in_scope_for_tenant: false`
-    rather than being silently processed as if it were expected - wrong
-    silent behavior here is exactly the kind of bug that's invisible
-    until a client asks "why did you process something we never agreed
-    you'd handle."
+    Upload a claim document for a specific tenant: extract text, classify
+    it, check it against the tenant's accepted document types, AND (new
+    as of Day 6) chunk + embed + index it so it's searchable afterward
+    via /search.
     """
     try:
         config = load_client_config(tenant_id)
@@ -117,7 +120,11 @@ async def ingest_document(
     classification = classify_document(extraction.text)
     in_scope = classification.document_type in config.accepted_document_types
 
+    document_id = str(uuid.uuid4())
+    chunks_indexed = vector_store.index_document(document_id, tenant_id, extraction.text)
+
     return {
+        "document_id": document_id,
         "filename": file.filename,
         "tenant_id": tenant_id,
         "tenant_display_name": config.display_name,
@@ -130,8 +137,40 @@ async def ingest_document(
         "classification_scores": classification.scores,
         "in_scope_for_tenant": in_scope,
         "tenant_review_threshold": config.review_threshold,
+        "chunks_indexed": chunks_indexed,
         "text_preview": extraction.text[:500],
         "full_text": extraction.text,
+    }
+
+
+@app.post("/search")
+def search_documents(request: SearchRequest) -> dict:
+    """
+    Search previously-ingested documents for a tenant. Results are
+    hard-filtered to `tenant_id` at the vector store level - not just
+    "usually scoped by convention" - so this endpoint cannot return
+    another tenant's content even if asked to.
+    """
+    try:
+        load_client_config(request.tenant_id)  # validates tenant exists before searching
+    except TenantNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidClientConfigError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    results = vector_store.search(request.query, tenant_id=request.tenant_id, top_k=request.top_k)
+    return {
+        "query": request.query,
+        "tenant_id": request.tenant_id,
+        "results": [
+            {
+                "document_id": r.document_id,
+                "chunk_index": r.chunk_index,
+                "score": r.score,
+                "text": r.text,
+            }
+            for r in results
+        ],
     }
 
 
@@ -141,8 +180,12 @@ def root() -> dict:
         "service": "claimsight",
         "docs": "/docs",
         "health": "/health",
-        "endpoints": ["/health", "/schema/claim-document", "/tenants", "/tenants/{tenant_id}", "/ingest"],
+        "endpoints": [
+            "/health", "/schema/claim-document", "/tenants", "/tenants/{tenant_id}",
+            "/ingest", "/search",
+        ],
     }
+
 
 
 

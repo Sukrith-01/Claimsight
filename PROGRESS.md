@@ -210,3 +210,62 @@ passes 33/33.
 alongside Week 2's extraction work, once there's a field-level accuracy
 to measure, not just classification), field-level ground truth isn't
 evaluated yet since structured extraction doesn't exist.
+
+---
+
+## Day 6 — Chunking, embeddings, vector search
+
+**Built:**
+- `app/extraction/chunking.py` — overlapping character-window chunker,
+  tested for the actual overlap behavior, not just chunk count
+- `app/extraction/embeddings.py` — `Embedder` protocol +
+  `HashingEmbedder` (deterministic, dependency-free, no API key, no
+  network call)
+- `app/extraction/retriever.py` — ChromaDB wrapper: indexes chunks with
+  `tenant_id` in metadata, filters every search by tenant_id as a hard
+  constraint, not a ranking signal
+- `/ingest` now indexes every document after extraction; new `/search`
+  endpoint queries a tenant's indexed content
+- 12 new tests, including the two that matter most:
+  `test_search_never_leaks_across_tenants` and the live-HTTP proof that
+  a collision query scores the accident report far higher than an
+  unrelated medical bill from the same tenant
+
+**The real design decision, worth explaining in an interview:** this
+project's target stack (and its resume) point at OpenAI/Claude hosted
+embeddings. Those need an API key and cost money per call. Rather than
+block on that or write code that would silently fail in CI (no key =
+no embeddings = broken pipeline), embeddings sit behind a small
+`Embedder` protocol. `HashingEmbedder` — free, deterministic, offline —
+is the active implementation for dev/CI. A hosted embedder is a
+one-line swap behind the same interface once there's a key and a budget
+for it, not a rewrite. This is a real, common production pattern (cheap
+local component in dev/CI, hosted one in prod), not a workaround
+invented to dodge a limitation — worth saying exactly that if asked.
+
+**Second real decision:** tenant isolation is enforced at the vector
+store's metadata filter, not assumed from "well, the config loader
+already handles tenants." Day 4 restricted which document TYPES a
+tenant accepts; it said nothing about whether Tenant A's actual document
+CONTENT could leak into Tenant B's search results. That's a different
+failure mode, worth testing separately - which is exactly what
+`test_search_never_leaks_across_tenants` does.
+
+**Verified:** ran the full loop over live HTTP - ingested two documents
+for Acme, searched for a collision-related query, got the accident
+report ranked correctly above the unrelated medical bill (0.208 vs.
+0.054), and confirmed Beta's search for the same query returns nothing
+of Acme's. `pytest tests/ -v` passes 45/45.
+
+**Near-miss worth logging:** while adding chromadb to `requirements.txt`,
+an edit accidentally replaced the reportlab dev-dependency block instead
+of appending after it - caught immediately by re-reading the file after
+the edit rather than assuming it landed correctly. No broken commit
+resulted, but it's the same category of mistake as Day 2's file-format
+issue: verify the actual state of a file after changing it, don't trust
+that an edit did what it was intended to do.
+
+**Didn't get to:** structured field extraction (still Week 2's next
+piece - retrieval finds relevant text, but nothing yet turns it into a
+validated `ClaimDocument`), persisting the vector store across restarts
+(currently in-memory, resets when the server restarts).

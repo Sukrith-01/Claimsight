@@ -1,8 +1,12 @@
 # Day 1: API service only.
 #
-# Coming in later weeks (left as comments so the file documents the plan,
-# not just the current state):
-#   - chroma: vector DB for retrieval (Week 2)
+# Note on Chroma: ChromaDB runs IN-PROCESS (embedded client, no separate
+# service) as of Day 6 - that's why there's no `chroma` service below.
+# A standalone Chroma server (the commented block) would only be needed
+# for a multi-instance deployment sharing one index, which isn't the
+# case yet.
+#
+# Coming in later weeks:
 #   - prometheus + grafana: monitoring stack (Week 3)
 
 services:
@@ -16,6 +20,9 @@ services:
     environment:
       - ENV=development
 
+  # Standalone Chroma server - only needed if/when multiple API instances
+  # need to share one persistent index rather than each running its own
+  # in-process store.
   # chroma:
   #   image: chromadb/chroma:latest
   #   ports:

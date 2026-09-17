@@ -113,3 +113,43 @@ unnoticed for two days provides zero value — the whole point of gating
 on CI is catching problems before they compound, not after. Going
 forward: check the Actions tab (or the email) right after every push,
 not "whenever."
+
+---
+
+## Day 6 — chromadb pinned to a version with no Windows wheel
+
+**What broke:** `pip install -r requirements.txt` failed on Windows
+trying to build `chroma-hnswlib` from source: `Microsoft Visual C++ 14.0
+or greater is required`.
+
+**Root cause:** `chromadb==0.5.20` (the version originally pinned)
+depends on `chroma-hnswlib==0.7.6` as an exact pin. That exact version
+has no prebuilt wheel published for ANY platform — only alpha
+pre-releases do. Every real install of `chromadb==0.5.20` on any OS
+without a C++ compiler already present would hit this; it isn't
+Windows-specific, it's a genuine packaging gap in that chromadb release.
+
+**How it was actually diagnosed** (worth remembering as a technique, not
+just the fix): rather than guess, used `pip download --only-binary=:all:
+--platform win_amd64 --python-version 3.12` to check, from this
+(non-Windows) dev environment, whether a wheel exists for a given
+package/version/platform combination WITHOUT needing a Windows machine
+to test it on. Confirmed `chroma-hnswlib==0.7.6` has no matching wheel,
+then confirmed `chromadb==1.0.15` doesn't depend on `chroma-hnswlib` as a
+core dependency at all (moved it to an optional dev extra) and ships its
+own compiled backend as one prebuilt wheel.
+
+**Fix:** bumped `chromadb` to `1.0.15` in `requirements.txt`. Ran the
+full test suite against it before committing to the change (not just
+"it probably still works") — all 45 tests passed unchanged, confirming
+the client API (`Client()`, `get_or_create_collection`, `.add`,
+`.query`) is stable across that version jump for the calls this project
+actually uses.
+
+**Category:** dependency pinned to a specific version with a packaging
+defect, not a code bug. General principle: when a `pip install` fails
+trying to COMPILE something, the fix is very rarely "install a compiler"
+— it's much more often "find a version of this dependency that has a
+prebuilt wheel for the target platform," which `pip download
+--only-binary=:all: --platform <target> --python-version <version>` can
+check without needing that platform.

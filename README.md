@@ -6,12 +6,11 @@ structured data, scores confidence per field, and routes low-confidence
 extractions to human review — with per-client schemas driven by config,
 not forked code.
 
-**Status:** Day 5 — golden dataset started (10 of ~30 examples) and
-already used the way it's supposed to be: measured classification
-accuracy (80%), found a real gap in keyword coverage, fixed it, and
-re-measured (100%). Structured field extraction, retrieval, and the
-review workflow land over the next weeks; see `PROGRESS.md` for the
-running log.
+**Status:** Day 6 — retrieval is live. Documents are chunked, embedded,
+and indexed on ingest; `/search` finds relevant chunks for a tenant, with
+verified zero cross-tenant leakage at the vector store level. Structured
+field extraction and the review workflow are next; see `PROGRESS.md` for
+the running log.
 
 ## Architecture (target — most pieces not built yet)
 
@@ -57,8 +56,10 @@ Then:
 - `GET /tenants` — list configured tenants
 - `GET /tenants/{tenant_id}` — inspect one tenant's config
 - `POST /ingest` — upload a PDF/image + a `tenant_id`, get back extracted
-  text, extraction method, classified document type, and whether that
-  document type is `in_scope_for_tenant` per that tenant's config
+  text, extraction method, classified document type, whether that type
+  is `in_scope_for_tenant`, and how many chunks got indexed for search
+- `POST /search` — query previously-ingested documents for a tenant;
+  results are hard-filtered to that tenant, never cross-tenant
 - `GET /docs` — interactive API docs (FastAPI auto-generated)
 
 See the actual multi-tenant behavior — same file, different tenant, different result:
@@ -77,6 +78,22 @@ Try the OCR fallback path specifically:
 curl -X POST http://localhost:8000/ingest \
   -F "file=@data/sample_docs/accident_report_scanned.pdf" -F "tenant_id=acme_insurance"
 ```
+
+Ingest a document, then search for it:
+```bash
+curl -X POST http://localhost:8000/ingest \
+  -F "file=@data/sample_docs/accident_report_sample.pdf" -F "tenant_id=acme_insurance"
+
+curl -X POST http://localhost:8000/search \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id": "acme_insurance", "query": "vehicle collision at an intersection"}'
+```
+
+**Note on embeddings:** the default embedder (`HashingEmbedder`) is a
+deterministic, dependency-free local implementation - no API key, no
+network call, no cost. It's a real design tradeoff, not a shortcut: see
+the docstring in `app/extraction/embeddings.py` for why, and how a real
+hosted embedding API slots in later via the same interface.
 
 ## Run it via Docker
 

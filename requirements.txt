@@ -11,6 +11,14 @@ pymupdf==1.24.11
 pytesseract==0.3.13
 pillow==10.4.0
 
-# Dev-only: generates synthetic sample documents for local testing.
+# Day 6: chunking + embeddings + vector search
+# chromadb==0.5.20 originally, bumped to 1.0.15 on Day 6 (see MISTAKES.md):
+# 0.5.20 pins chroma-hnswlib==0.7.6, a version with NO prebuilt wheel for
+# any platform, forcing a from-source C++ build that fails on Windows
+# without Visual C++ Build Tools installed. 1.0.15 ships its own compiled
+# backend as a single prebuilt wheel and has no compile-from-source step.
+chromadb==1.0.15
+
+# Dev-only: generates synthetic sample/golden documents for local testing.
 # Not needed to run the API itself.
 reportlab==4.2.5
