@@ -324,3 +324,48 @@ fields (name, policy number) are populated on `ClaimDocument` right now;
 scope, not an oversight - modeling a list of billing line items well is
 a slightly bigger design decision than a single claimant object and
 deserves its own pass rather than being bolted on at the end of today.
+
+---
+
+## Day 8 — Confidence scoring (replacing Day 7's binary model)
+
+**Built:**
+- `app/extraction/confidence.py` — multi-signal confidence scorer:
+  per-field format plausibility (name validation, date parsing,
+  currency format check) + field coverage penalty (documents missing
+  most expected fields score lower overall, even if the found fields
+  individually look fine) + human-readable flags explaining every low
+  score in language an adjuster could read
+- Updated `build_claim_document()` to return a full `ConfidenceReport`
+  alongside the `ClaimDocument`, replacing Day 7's binary 0.95/0.0
+  field scores with the scorer's graduated output
+- `/ingest` now surfaces `confidence_flags` in the response
+- 12 new tests covering graduated scenarios Day 7's model couldn't
+  differentiate: OCR garbage in a name, single-word names, dates that
+  don't parse, missing fields, currency formatting, and the coverage
+  penalty formula
+
+**Why this matters (and what Day 7 couldn't do):** Day 7's confidence
+was binary — a regex either matched (0.95) or it didn't (0.0). That
+meant `requires_review` could only ever trigger from a *missing* field,
+never from a field that matched something subtly wrong (OCR noise, a
+truncated name, a garbled date). Day 8's scorer differentiates:
+- Perfect extraction: overall 1.0, no flags, no review
+- Missing one of three fields: overall 0.556, flag explaining which
+  field is missing, triggers review (below Acme's 0.85 threshold)
+- OCR noise in a name ("M4r1a G0nz4lez"): overall 0.8, flag says
+  "Name contains digits"
+- Single-word name: overall 0.867, flag says "missing first or last
+  name?"
+
+Those are the kind of graduated signals a real adjuster would actually
+want, and they demonstrate to an interviewer that "confidence" in this
+system means something concrete and interpretable, not a generic number
+between 0 and 1.
+
+**Verified:** ran the confidence scorer in isolation against 5 synthetic
+scenarios (perfect, missing field, OCR garbage, single-word name,
+totally empty), then ran the full pipeline over live HTTP against a
+complete accident report (1.0, no review) and a minimal one with
+missing fields (0.556, correctly triggers review, flag explains why).
+`pytest tests/ -v` passes 63/63.

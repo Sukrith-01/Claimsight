@@ -30,6 +30,7 @@ from app.models.schemas import (
     DocumentType,
     FieldConfidence,
 )
+from app.extraction.confidence import score_extraction, ConfidenceReport
 
 
 class Extractor(Protocol):
@@ -145,15 +146,27 @@ def build_claim_document(
     document_type: DocumentType,
     text: str,
     extractor: Extractor | None = None,
-) -> ClaimDocument:
+) -> tuple[ClaimDocument, ConfidenceReport]:
     """
-    Runs extraction and assembles a validated ClaimDocument. Overall
-    confidence is the mean of field confidences - simple on purpose; a
-    weighted or ML-based aggregate is future work once there's a reason
-    (real eval data) to justify the added complexity over this baseline.
+    Runs extraction, then confidence scoring (Day 8), and assembles a
+    validated ClaimDocument. Returns both the document and the full
+    confidence report (including human-readable flags), so the caller
+    can decide what to surface to an adjuster vs. what to log.
+
+    Day 7's version computed confidence as a simple mean of binary
+    0.95/0.0 field scores. Day 8 replaces that: the extractor still
+    produces the raw field values, but confidence.score_extraction()
+    now evaluates each value's FORMAT PLAUSIBILITY (does this look like
+    a real name / date / dollar amount?) and FIELD COVERAGE (what
+    fraction of expected fields were actually found?). The old binary
+    scores from the extractor are ignored in favor of the scorer's
+    richer signal.
     """
     extractor = extractor or RuleBasedExtractor()
-    fields, field_confidences = extractor.extract(text, document_type)
+    fields, _raw_confidences = extractor.extract(text, document_type)
+
+    # Day 8: real confidence scoring replaces the extractor's binary scores
+    confidence_report = score_extraction(fields, document_type)
 
     claimant = None
     if "claimant_name" in fields or "policyholder" in fields or "patient_name" in fields:
@@ -163,18 +176,14 @@ def build_claim_document(
             policy_number=fields.get("policy_number"),
         )
 
-    overall_confidence = (
-        sum(fc.score for fc in field_confidences) / len(field_confidences)
-        if field_confidences
-        else 0.0
-    )
-
-    return ClaimDocument(
+    doc = ClaimDocument(
         document_id=document_id,
         tenant_id=tenant_id,
         document_type=document_type,
         claimant=claimant,
-        field_confidences=field_confidences,
-        overall_confidence=round(overall_confidence, 3),
+        field_confidences=confidence_report.field_confidences,
+        overall_confidence=confidence_report.overall_confidence,
         raw_text_excerpt=text[:500],
     )
+
+    return doc, confidence_report

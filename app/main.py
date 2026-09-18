@@ -133,11 +133,13 @@ async def ingest_document(
     # deeper.
     extracted_document = None
     requires_review = None
+    confidence_flags = None
     if in_scope and classification.document_type != DocumentType.UNKNOWN:
-        extracted_document = build_claim_document(
+        extracted_document, confidence_report = build_claim_document(
             document_id, tenant_id, classification.document_type, extraction.text
         )
         requires_review = extracted_document.overall_confidence < config.review_threshold
+        confidence_flags = confidence_report.flags if confidence_report.flags else None
 
     return {
         "document_id": document_id,
@@ -156,6 +158,7 @@ async def ingest_document(
         "chunks_indexed": chunks_indexed,
         "extracted_fields": extracted_document.model_dump(mode="json") if extracted_document else None,
         "requires_review": requires_review,
+        "confidence_flags": confidence_flags,
         "text_preview": extraction.text[:500],
         "full_text": extraction.text,
     }

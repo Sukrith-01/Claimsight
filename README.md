@@ -6,13 +6,11 @@ structured data, scores confidence per field, and routes low-confidence
 extractions to human review — with per-client schemas driven by config,
 not forked code.
 
-**Status:** Day 7 — structured extraction is live. In-scope documents
-get real fields extracted (claimant name, policy number, etc.) with a
-per-field confidence, and Day 4's review threshold finally does
-something: a low-confidence extraction now genuinely routes to
-`requires_review: true`. Out-of-scope documents correctly skip
-extraction entirely rather than running it and discarding the result.
-See `PROGRESS.md` for the running log.
+**Status:** Day 8 — confidence scoring is real. Extractions are now
+scored on format plausibility (does a name contain digits? does a date
+parse?) and field coverage (how many expected fields were found?), with
+human-readable flags explaining why something was flagged — not just a
+binary match/no-match. See `PROGRESS.md` for the running log.
 
 ## Architecture (target — most pieces not built yet)
 
