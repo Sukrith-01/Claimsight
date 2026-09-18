@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel
 
-from app.models.schemas import ClaimDocument
+from app.models.schemas import ClaimDocument, DocumentType
 from app.ingestion.ocr import extract_text
 from app.ingestion.classifier import classify_document
 from app.config.loader import (
@@ -28,11 +28,12 @@ from app.config.loader import (
     InvalidClientConfigError,
 )
 from app.extraction.retriever import VectorStore
+from app.extraction.extractor import build_claim_document
 
 app = FastAPI(
     title="ClaimSight",
     description="Multi-tenant insurance claims document intelligence platform.",
-    version="0.6.0",
+    version="0.7.0",
 )
 
 SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp"}
@@ -53,7 +54,7 @@ class SearchRequest(BaseModel):
 @app.get("/health")
 def health() -> dict:
     """Liveness check. Docker/orchestrators hit this to confirm the service is up."""
-    return {"status": "ok", "service": "claimsight", "version": "0.6.0"}
+    return {"status": "ok", "service": "claimsight", "version": "0.7.0"}
 
 
 @app.get("/schema/claim-document")
@@ -123,6 +124,21 @@ async def ingest_document(
     document_id = str(uuid.uuid4())
     chunks_indexed = vector_store.index_document(document_id, tenant_id, extraction.text)
 
+    # Structured extraction only runs for documents this tenant is
+    # actually configured to accept. Extracting fields from an
+    # out-of-scope document (e.g. a medical bill for a tenant whose
+    # contract doesn't cover medical claims) would produce a fully-formed
+    # ClaimDocument for something nobody agreed to process - the same
+    # silent-wrong-behavior risk flagged in Day 4's docstring, one layer
+    # deeper.
+    extracted_document = None
+    requires_review = None
+    if in_scope and classification.document_type != DocumentType.UNKNOWN:
+        extracted_document = build_claim_document(
+            document_id, tenant_id, classification.document_type, extraction.text
+        )
+        requires_review = extracted_document.overall_confidence < config.review_threshold
+
     return {
         "document_id": document_id,
         "filename": file.filename,
@@ -138,6 +154,8 @@ async def ingest_document(
         "in_scope_for_tenant": in_scope,
         "tenant_review_threshold": config.review_threshold,
         "chunks_indexed": chunks_indexed,
+        "extracted_fields": extracted_document.model_dump(mode="json") if extracted_document else None,
+        "requires_review": requires_review,
         "text_preview": extraction.text[:500],
         "full_text": extraction.text,
     }

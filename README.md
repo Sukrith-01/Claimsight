@@ -6,11 +6,13 @@ structured data, scores confidence per field, and routes low-confidence
 extractions to human review — with per-client schemas driven by config,
 not forked code.
 
-**Status:** Day 6 — retrieval is live. Documents are chunked, embedded,
-and indexed on ingest; `/search` finds relevant chunks for a tenant, with
-verified zero cross-tenant leakage at the vector store level. Structured
-field extraction and the review workflow are next; see `PROGRESS.md` for
-the running log.
+**Status:** Day 7 — structured extraction is live. In-scope documents
+get real fields extracted (claimant name, policy number, etc.) with a
+per-field confidence, and Day 4's review threshold finally does
+something: a low-confidence extraction now genuinely routes to
+`requires_review: true`. Out-of-scope documents correctly skip
+extraction entirely rather than running it and discarding the result.
+See `PROGRESS.md` for the running log.
 
 ## Architecture (target — most pieces not built yet)
 
@@ -57,7 +59,9 @@ Then:
 - `GET /tenants/{tenant_id}` — inspect one tenant's config
 - `POST /ingest` — upload a PDF/image + a `tenant_id`, get back extracted
   text, extraction method, classified document type, whether that type
-  is `in_scope_for_tenant`, and how many chunks got indexed for search
+  is `in_scope_for_tenant`, chunks indexed for search, and (new) extracted
+  structured fields (`extracted_fields`) with a `requires_review` flag
+  based on the tenant's configured confidence threshold
 - `POST /search` — query previously-ingested documents for a tenant;
   results are hard-filtered to that tenant, never cross-tenant
 - `GET /docs` — interactive API docs (FastAPI auto-generated)

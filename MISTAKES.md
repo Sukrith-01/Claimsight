@@ -153,3 +153,28 @@ trying to COMPILE something, the fix is very rarely "install a compiler"
 prebuilt wheel for the target platform," which `pip download
 --only-binary=:all: --platform <target> --python-version <version>` can
 check without needing that platform.
+
+---
+
+## Day 7 — Test asserted something the code was never designed to do
+
+**What broke:** `test_extracts_claimant_name_and_policy_number_from_accident_report`
+failed with `all(fc.score == 0.95 for fc in confidences)` returning False.
+
+**Root cause:** the test's sample text only included two fields
+(`Claimant Name`, `Policy Number`), but `ACCIDENT_REPORT` has THREE
+field patterns defined (`claimant_name`, `policy_number`, and
+`incident_date`). The missing third field correctly returned confidence
+0.0, exactly as designed - the extractor was right, the test's fixture
+text was incomplete relative to what it was asserting about.
+
+**Fix:** added the missing `Incident Date:` line to the test's sample
+text so it actually covers all three fields the assertion checks.
+
+**Category:** test fixture didn't match the full field set the code
+under test operates on - easy to do when a test is written by looking
+at "what does a normal document look like" rather than "what does THIS
+specific function's pattern dictionary actually check for." Worth a
+habit: when asserting something broad like "all fields matched," read
+the actual pattern/field list being tested against, not just a
+representative sample of the domain.

@@ -269,3 +269,58 @@ that an edit did what it was intended to do.
 piece - retrieval finds relevant text, but nothing yet turns it into a
 validated `ClaimDocument`), persisting the vector store across restarts
 (currently in-memory, resets when the server restarts).
+
+---
+
+## Day 7 — Structured field extraction
+
+**Built:**
+- `app/extraction/extractor.py` — `Extractor` protocol +
+  `RuleBasedExtractor` (regex, per document type, multiple label
+  patterns per field to handle real-world phrasing variance the same
+  way Day 5's classifier keyword expansion did)
+- `build_claim_document()` — assembles a validated `ClaimDocument` from
+  extracted fields, with per-field and overall confidence
+- `/ingest` now runs extraction for in-scope documents, returns
+  `extracted_fields`, and sets `requires_review` by comparing the
+  extraction's confidence against the TENANT'S OWN configured
+  `review_threshold` (defined Day 4, unused until today)
+- Out-of-scope documents correctly skip extraction entirely rather than
+  running it and discarding the result - same silent-wrong-behavior
+  principle from Day 4, one layer deeper
+- 7 new tests, including extraction generalizing to phrasing variants
+  (same test shape as Day 5's classifier fix) and the review-routing
+  decision actually firing off a real configured threshold, not a
+  hardcoded value
+
+**Same design pattern as Day 6, applied one layer deeper:** an
+`Extractor` protocol with `RuleBasedExtractor` (free, deterministic,
+dependency-free) as the active dev/CI implementation, and an
+`LLMExtractor` stub ready to activate once there's an API key. Field
+extraction is a STRONGER case for an eventual LLM than embeddings were -
+regex only recognizes phrasing someone explicitly wrote a pattern for,
+while an LLM would generalize further. RuleBasedExtractor exists so the
+pipeline has something real to measure a future LLM extractor against,
+not because regex is believed to be sufficient long-term.
+
+**Verified:** ran extraction against real golden dataset PDFs (not just
+hand-typed test strings), including phrasing variants that specifically
+broke Day 5's classifier before its fix - confirmed the label-alternation
+approach generalizes the same way. Live HTTP test confirmed all three
+cases: in-scope extraction works, out-of-scope correctly returns
+`extracted_fields: null`, and a high-confidence extraction correctly
+comes back `requires_review: false` against Acme's real 0.85 threshold.
+
+**Real (small) mistake caught:** a new test asserted "all field
+confidences == 0.95" using sample text that didn't actually include all
+three fields `ACCIDENT_REPORT` checks for - the extractor was correct,
+the test fixture was incomplete. Full writeup in `MISTAKES.md`.
+
+**Known limitation, stated rather than hidden:** only claimant-level
+fields (name, policy number) are populated on `ClaimDocument` right now;
+`BillingLineItem` extraction (for medical bill amounts) isn't wired into
+`build_claim_document()` yet, even though the regex patterns for
+`total_billed` exist and are tested at the extractor level. That's next
+scope, not an oversight - modeling a list of billing line items well is
+a slightly bigger design decision than a single claimant object and
+deserves its own pass rather than being bolted on at the end of today.
