@@ -42,6 +42,11 @@ from app.review.queue import (
     get_queue_stats,
     CorrectionEntry,
 )
+from app.review.feedback import (
+    export_correction_to_golden,
+    list_feedback_entries,
+    get_feedback_stats,
+)
 
 app = FastAPI(
     title="ClaimSight",
@@ -276,9 +281,10 @@ def get_review_detail(tenant_id: str, document_id: str) -> dict:
 def submit_correction(tenant_id: str, document_id: str, request: CorrectionRequest) -> dict:
     """
     Submit adjuster corrections for a review item. Corrections are
-    APPENDED to the item, not overwriting the original extraction —
-    the diff between original and corrected is the training signal
-    for Day 10's feedback loop and an audit trail for compliance.
+    APPENDED to the item, not overwriting the original extraction.
+    Day 10: also auto-exports the corrected item as a new golden
+    dataset entry, so the eval harness picks up real-world corrections
+    alongside synthetic examples.
     """
     item = get_review_item(document_id)
     if item is None:
@@ -287,10 +293,15 @@ def submit_correction(tenant_id: str, document_id: str, request: CorrectionReque
         raise HTTPException(status_code=404, detail=f"No review item found for document '{document_id}'")
 
     updated = apply_correction(document_id, request.corrections)
+
+    # Day 10: auto-export correction to golden dataset
+    feedback_path = export_correction_to_golden(updated)
+
     return {
         "document_id": document_id,
         "status": updated.status.value,
         "corrections_count": len(updated.corrections),
+        "feedback_exported": feedback_path is not None,
     }
 
 
@@ -310,6 +321,21 @@ def approve_extraction(tenant_id: str, document_id: str) -> dict:
     }
 
 
+# --- Feedback endpoints ---
+
+@app.get("/feedback")
+def feedback_overview() -> dict:
+    """Stats on how many adjuster corrections have been captured as golden dataset entries."""
+    return get_feedback_stats()
+
+
+@app.get("/feedback/entries")
+def feedback_entries() -> dict:
+    """List all feedback-sourced golden dataset entries."""
+    entries = list_feedback_entries()
+    return {"count": len(entries), "entries": entries}
+
+
 @app.get("/")
 def root() -> dict:
     return {
@@ -323,6 +349,7 @@ def root() -> dict:
             "/review/{tenant_id}/{document_id}",
             "/review/{tenant_id}/{document_id}/correct",
             "/review/{tenant_id}/{document_id}/approve",
+            "/feedback", "/feedback/entries",
         ],
     }
 

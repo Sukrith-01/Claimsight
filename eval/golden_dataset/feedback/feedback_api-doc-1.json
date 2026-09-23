@@ -1,0 +1,22 @@
+{
+  "example_id": "feedback_api-doc-1",
+  "document_type": "accident_report",
+  "expected_fields": {
+    "claimant_name": "Tom Reyes",
+    "policy_number": "API-FIX-001"
+  },
+  "source": "adjuster_correction",
+  "tenant_id": "acme_insurance",
+  "original_extraction": {
+    "claimant_name": "Tom Reyes"
+  },
+  "corrections_applied": [
+    {
+      "field_name": "policy_number",
+      "original_value": null,
+      "corrected_value": "API-FIX-001",
+      "corrected_at": "2026-09-23T16:45:55.854263+00:00"
+    }
+  ],
+  "exported_at": "2026-09-23T16:45:55.854263+00:00"
+}

@@ -6,10 +6,10 @@ structured data, scores confidence per field, and routes low-confidence
 extractions to human review — with per-client schemas driven by config,
 not forked code.
 
-**Status:** Day 9 — human review queue is live. Low-confidence
-extractions auto-route from /ingest into a tenant-scoped review queue.
-Adjusters can view pending items, submit corrections (appended for
-audit trail, never overwriting the original), or approve as-is. See
+**Status:** Day 10 — feedback loop closed. Adjuster corrections
+auto-export as new golden dataset entries that the eval harness can
+consume alongside hand-authored examples. The system now learns from
+its real mistakes, not just synthetic ones. Week 2 complete. See
 `PROGRESS.md` for the running log.
 
 ## Architecture (target — most pieces not built yet)
