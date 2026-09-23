@@ -369,3 +369,46 @@ totally empty), then ran the full pipeline over live HTTP against a
 complete accident report (1.0, no review) and a minimal one with
 missing fields (0.556, correctly triggers review, flag explains why).
 `pytest tests/ -v` passes 63/63.
+
+---
+
+## Day 9 — Human review queue
+
+**Built:**
+- `app/review/queue.py` — in-memory review queue: add, list (pending,
+  per-tenant), get detail, apply corrections, approve as-is, queue stats
+- `/ingest` now auto-routes low-confidence extractions into the queue
+  (new `queued_for_review` field in response)
+- 5 new API endpoints: `GET /review/{tenant_id}` (list pending),
+  `GET /review/{tenant_id}/stats`, `GET /review/{tenant_id}/{document_id}`
+  (detail), `POST .../correct`, `POST .../approve`
+- 12 new tests covering the module directly and the API endpoints,
+  including tenant isolation on the queue and the audit-trail invariant
+
+**The three design decisions that matter:**
+
+1. **Corrections APPEND, never overwrite.** The original extraction stays
+   intact on the `ReviewItem` even after an adjuster corrects it. Two
+   reasons: (a) audit trail — in regulated industries, "the system
+   extracted X, the adjuster changed it to Y" isn't a nice-to-have,
+   it's a compliance requirement, and (b) training signal — the diff
+   between predicted and corrected is exactly what Day 10's feedback
+   loop and a future retraining pipeline would consume.
+
+2. **Queue is tenant-scoped.** `list_pending_reviews("acme_insurance")`
+   never returns Beta's items. This is the third layer of tenant
+   isolation — config (Day 4), vector store (Day 6), and now the review
+   queue (Day 9) all enforce it independently.
+
+3. **In-memory storage is a stated simplification, not a silent one.**
+   Replacing the dict with SQLite or Postgres changes no endpoint
+   contract or test assertion — it's a mechanical swap documented in
+   the module docstring, not architecture debt hidden in a TODO comment.
+
+**Verified:** ran the full workflow directly (bypassed HTTP due to the
+sandbox background-process timing issue — this is a dev environment
+limitation, not a code limitation): ingested a minimal document (0.556
+confidence, below Acme's 0.85 threshold) → auto-queued → retrieved from
+queue → submitted correction → confirmed correction appended without
+overwriting original → confirmed queue stats updated correctly →
+confirmed Beta's queue empty. `pytest tests/ -v` passes 73/73.

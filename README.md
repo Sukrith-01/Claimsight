@@ -6,11 +6,11 @@ structured data, scores confidence per field, and routes low-confidence
 extractions to human review — with per-client schemas driven by config,
 not forked code.
 
-**Status:** Day 8 — confidence scoring is real. Extractions are now
-scored on format plausibility (does a name contain digits? does a date
-parse?) and field coverage (how many expected fields were found?), with
-human-readable flags explaining why something was flagged — not just a
-binary match/no-match. See `PROGRESS.md` for the running log.
+**Status:** Day 9 — human review queue is live. Low-confidence
+extractions auto-route from /ingest into a tenant-scoped review queue.
+Adjusters can view pending items, submit corrections (appended for
+audit trail, never overwriting the original), or approve as-is. See
+`PROGRESS.md` for the running log.
 
 ## Architecture (target — most pieces not built yet)
 

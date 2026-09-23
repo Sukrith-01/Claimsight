@@ -5,15 +5,19 @@ Day 1: health check + schema introspection.
 Day 2: document ingestion (/ingest) with OCR.
 Day 3: document classification wired into /ingest.
 Day 4: per-tenant client config.
-Day 6: chunking + embeddings + vector search. /ingest now also indexes
-the document for later retrieval, and a new /search endpoint queries
-across a tenant's indexed documents - tenant-scoped, so one tenant's
-search never surfaces another tenant's content.
+Day 6: chunking + embeddings + vector search.
+Day 7: structured field extraction.
+Day 8: multi-signal confidence scoring.
+Day 9: human review queue. /ingest now auto-routes low-confidence
+extractions into a review queue. New endpoints let an adjuster view
+pending items, apply corrections, or approve as-is. Corrections are
+appended (audit trail), never overwriting the original.
 """
 
 import tempfile
 import uuid
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel
@@ -29,6 +33,15 @@ from app.config.loader import (
 )
 from app.extraction.retriever import VectorStore
 from app.extraction.extractor import build_claim_document
+from app.review.queue import (
+    add_to_review,
+    get_review_item,
+    list_pending_reviews,
+    apply_correction,
+    approve_as_is,
+    get_queue_stats,
+    CorrectionEntry,
+)
 
 app = FastAPI(
     title="ClaimSight",
@@ -134,12 +147,23 @@ async def ingest_document(
     extracted_document = None
     requires_review = None
     confidence_flags = None
+    queued_for_review = False
     if in_scope and classification.document_type != DocumentType.UNKNOWN:
         extracted_document, confidence_report = build_claim_document(
             document_id, tenant_id, classification.document_type, extraction.text
         )
         requires_review = extracted_document.overall_confidence < config.review_threshold
         confidence_flags = confidence_report.flags if confidence_report.flags else None
+
+        # Day 9: auto-route to human review queue if confidence is below threshold
+        if requires_review:
+            add_to_review(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                extracted_document=extracted_document,
+                confidence_flags=confidence_flags or [],
+            )
+            queued_for_review = True
 
     return {
         "document_id": document_id,
@@ -158,6 +182,7 @@ async def ingest_document(
         "chunks_indexed": chunks_indexed,
         "extracted_fields": extracted_document.model_dump(mode="json") if extracted_document else None,
         "requires_review": requires_review,
+        "queued_for_review": queued_for_review,
         "confidence_flags": confidence_flags,
         "text_preview": extraction.text[:500],
         "full_text": extraction.text,
@@ -195,6 +220,96 @@ def search_documents(request: SearchRequest) -> dict:
     }
 
 
+# --- Review queue endpoints ---
+
+class CorrectionRequest(BaseModel):
+    corrections: list[CorrectionEntry]
+
+
+@app.get("/review/{tenant_id}")
+def get_pending_reviews(tenant_id: str) -> dict:
+    """
+    List pending review items for a tenant. An adjuster's entry point:
+    "show me what needs my attention." Scoped by tenant_id — an Acme
+    adjuster never sees Beta's queue.
+    """
+    try:
+        load_client_config(tenant_id)
+    except TenantNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidClientConfigError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    items = list_pending_reviews(tenant_id)
+    return {
+        "tenant_id": tenant_id,
+        "pending_count": len(items),
+        "items": [item.model_dump(mode="json") for item in items],
+    }
+
+
+@app.get("/review/{tenant_id}/stats")
+def review_queue_stats(tenant_id: str) -> dict:
+    """Queue stats for monitoring / dashboards."""
+    try:
+        load_client_config(tenant_id)
+    except TenantNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidClientConfigError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return get_queue_stats(tenant_id)
+
+
+@app.get("/review/{tenant_id}/{document_id}")
+def get_review_detail(tenant_id: str, document_id: str) -> dict:
+    """Get the full detail of a single review item, including any corrections already applied."""
+    item = get_review_item(document_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"No review item found for document '{document_id}'")
+    if item.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail=f"No review item found for document '{document_id}'")
+    return item.model_dump(mode="json")
+
+
+@app.post("/review/{tenant_id}/{document_id}/correct")
+def submit_correction(tenant_id: str, document_id: str, request: CorrectionRequest) -> dict:
+    """
+    Submit adjuster corrections for a review item. Corrections are
+    APPENDED to the item, not overwriting the original extraction —
+    the diff between original and corrected is the training signal
+    for Day 10's feedback loop and an audit trail for compliance.
+    """
+    item = get_review_item(document_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"No review item found for document '{document_id}'")
+    if item.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail=f"No review item found for document '{document_id}'")
+
+    updated = apply_correction(document_id, request.corrections)
+    return {
+        "document_id": document_id,
+        "status": updated.status.value,
+        "corrections_count": len(updated.corrections),
+    }
+
+
+@app.post("/review/{tenant_id}/{document_id}/approve")
+def approve_extraction(tenant_id: str, document_id: str) -> dict:
+    """Adjuster reviewed it and the extraction is correct as-is."""
+    item = get_review_item(document_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"No review item found for document '{document_id}'")
+    if item.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail=f"No review item found for document '{document_id}'")
+
+    updated = approve_as_is(document_id)
+    return {
+        "document_id": document_id,
+        "status": updated.status.value,
+    }
+
+
 @app.get("/")
 def root() -> dict:
     return {
@@ -204,6 +319,10 @@ def root() -> dict:
         "endpoints": [
             "/health", "/schema/claim-document", "/tenants", "/tenants/{tenant_id}",
             "/ingest", "/search",
+            "/review/{tenant_id}", "/review/{tenant_id}/stats",
+            "/review/{tenant_id}/{document_id}",
+            "/review/{tenant_id}/{document_id}/correct",
+            "/review/{tenant_id}/{document_id}/approve",
         ],
     }
 
