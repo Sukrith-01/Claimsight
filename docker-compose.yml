@@ -1,13 +1,9 @@
-# Day 1: API service only.
+# ClaimSight full stack: API + monitoring.
 #
-# Note on Chroma: ChromaDB runs IN-PROCESS (embedded client, no separate
-# service) as of Day 6 - that's why there's no `chroma` service below.
-# A standalone Chroma server (the commented block) would only be needed
-# for a multi-instance deployment sharing one index, which isn't the
-# case yet.
-#
-# Coming in later weeks:
-#   - prometheus + grafana: monitoring stack (Week 3)
+# `docker compose up --build` starts everything.
+# API at http://localhost:8000, Prometheus at http://localhost:9090,
+# Grafana at http://localhost:3000 (admin/admin on first login,
+# add Prometheus as a data source at http://prometheus:9090).
 
 services:
   api:
@@ -20,22 +16,23 @@ services:
     environment:
       - ENV=development
 
-  # Standalone Chroma server - only needed if/when multiple API instances
-  # need to share one persistent index rather than each running its own
-  # in-process store.
-  # chroma:
-  #   image: chromadb/chroma:latest
-  #   ports:
-  #     - "8001:8000"
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - api
 
-  # prometheus:
-  #   image: prom/prometheus:latest
-  #   ports:
-  #     - "9090:9090"
-  #   volumes:
-  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-
-  # grafana:
-  #   image: grafana/grafana:latest
-  #   ports:
-  #     - "3000:3000"
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./monitoring/grafana_dashboard.json:/etc/grafana/provisioning/dashboards/claimsight.json
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    depends_on:
+      - prometheus

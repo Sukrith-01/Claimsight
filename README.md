@@ -6,13 +6,15 @@ structured data, scores confidence per field, and routes low-confidence
 extractions to human review — with per-client schemas driven by config,
 not forked code.
 
-**Status:** Day 10 — feedback loop closed. Adjuster corrections
-auto-export as new golden dataset entries that the eval harness can
-consume alongside hand-authored examples. The system now learns from
-its real mistakes, not just synthetic ones. Week 2 complete. See
-`PROGRESS.md` for the running log.
+**Status:** Complete. Full pipeline working end to end: upload → OCR
+(with scanned fallback) → classify → scope check against tenant config
+→ chunk + embed + index → extract structured fields → score confidence
+with human-readable flags → route low-confidence to review → capture
+corrections → auto-export to golden dataset. Two tenants, 91 tests,
+10/10 eval accuracy, CI-gated, monitoring instrumented, Docker-packaged.
+See `PROGRESS.md` for the full 15-day build log.
 
-## Architecture (target — most pieces not built yet)
+## Architecture
 
 ```mermaid
 flowchart TB
@@ -97,16 +99,22 @@ network call, no cost. It's a real design tradeoff, not a shortcut: see
 the docstring in `app/extraction/embeddings.py` for why, and how a real
 hosted embedding API slots in later via the same interface.
 
-## Run it via Docker
+## Run it via Docker (full stack with monitoring)
 
 ```bash
 docker compose up --build
 ```
 
+This starts: API at `http://localhost:8000`, Prometheus at
+`http://localhost:9090`, Grafana at `http://localhost:3000` (anonymous
+view enabled). Add Prometheus as a Grafana data source at
+`http://prometheus:9090`, then import the dashboard from
+`monitoring/grafana_dashboard.json`.
+
 ## Run tests
 
 ```bash
-pytest tests/ -v
+pytest tests/ -v    # 91 tests
 ```
 
 ## Run the eval harness

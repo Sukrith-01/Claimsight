@@ -22,3 +22,6 @@ chromadb==1.0.15
 # Dev-only: generates synthetic sample/golden documents for local testing.
 # Not needed to run the API itself.
 reportlab==4.2.5
+
+# Day 13: monitoring
+prometheus-client==0.21.0

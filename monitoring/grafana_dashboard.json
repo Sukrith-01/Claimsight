@@ -1,0 +1,38 @@
+{
+  "title": "ClaimSight Overview",
+  "uid": "claimsight-main",
+  "panels": [
+    {
+      "title": "Documents Ingested (total)",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "sum(claimsight_ingest_total)", "legendFormat": "total"}]
+    },
+    {
+      "title": "Ingestion Rate by Tenant",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [{"expr": "sum(rate(claimsight_ingest_total[5m])) by (tenant_id)", "legendFormat": "{{tenant_id}}"}]
+    },
+    {
+      "title": "Ingestion Duration (p95) by Method",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [{"expr": "histogram_quantile(0.95, rate(claimsight_ingest_duration_seconds_bucket[5m]))", "legendFormat": "p95 {{extraction_method}}"}]
+    },
+    {
+      "title": "Review Queue Depth by Tenant",
+      "type": "timeseries",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "targets": [{"expr": "claimsight_review_queue_depth", "legendFormat": "{{tenant_id}}"}]
+    },
+    {
+      "title": "Extraction Confidence Distribution",
+      "type": "histogram",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "targets": [{"expr": "sum(rate(claimsight_extraction_confidence_bucket[5m])) by (le)", "legendFormat": "{{le}}"}]
+    }
+  ],
+  "time": {"from": "now-1h", "to": "now"},
+  "refresh": "10s"
+}

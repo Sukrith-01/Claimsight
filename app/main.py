@@ -15,6 +15,7 @@ appended (audit trail), never overwriting the original.
 """
 
 import tempfile
+import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -47,12 +48,25 @@ from app.review.feedback import (
     list_feedback_entries,
     get_feedback_stats,
 )
+from app.metrics import INGEST_TOTAL, INGEST_DURATION, REVIEW_QUEUE_DEPTH, EXTRACTION_CONFIDENCE
 
 app = FastAPI(
     title="ClaimSight",
     description="Multi-tenant insurance claims document intelligence platform.",
-    version="0.7.0",
+    version="0.10.0",
 )
+
+# Day 11: register global error handler
+from app.errors import register_error_handlers
+register_error_handlers(app)
+
+# Day 13: Prometheus /metrics endpoint
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from fastapi.responses import Response
+
+@app.get("/metrics")
+def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 SUPPORTED_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".tiff", ".bmp"}
 
@@ -110,6 +124,8 @@ async def ingest_document(
     as of Day 6) chunk + embed + index it so it's searchable afterward
     via /search.
     """
+    start_time = time.time()
+
     try:
         config = load_client_config(tenant_id)
     except TenantNotFoundError as e:
@@ -126,6 +142,8 @@ async def ingest_document(
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         contents = await file.read()
+        if len(contents) == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty (0 bytes).")
         tmp.write(contents)
         tmp_path = tmp.name
 
@@ -169,6 +187,15 @@ async def ingest_document(
                 confidence_flags=confidence_flags or [],
             )
             queued_for_review = True
+
+    # Day 13: record metrics
+    duration = time.time() - start_time
+    INGEST_TOTAL.labels(tenant_id=tenant_id, document_type=classification.document_type.value).inc()
+    INGEST_DURATION.labels(extraction_method=extraction.method).observe(duration)
+    if extracted_document and extracted_document.overall_confidence is not None:
+        EXTRACTION_CONFIDENCE.labels(tenant_id=tenant_id).observe(extracted_document.overall_confidence)
+    if queued_for_review:
+        REVIEW_QUEUE_DEPTH.labels(tenant_id=tenant_id).inc()
 
     return {
         "document_id": document_id,

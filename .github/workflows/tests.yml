@@ -16,3 +16,23 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
       - run: pip install -r requirements.txt
       - run: pytest tests/ -v
+
+  eval:
+    # Day 12: eval harness as a real CI gate.
+    # Runs the golden dataset through the classifier and fails the build
+    # if accuracy drops below the floor. This is separate from pytest
+    # deliberately - unit tests check "does the code work," eval checks
+    # "does the system produce good answers." Both must pass.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Tesseract OCR
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+      - run: pip install -r requirements.txt
+      - name: Generate golden dataset
+        run: python scripts/generate_golden_dataset.py
+      - name: Run eval harness
+        run: python eval/run_eval.py

@@ -464,3 +464,101 @@ through feedback: OCR → classify → scope check → chunk + index →
 extract fields → score confidence → route to review → capture
 corrections → export to golden dataset. Week 3 starts hardening:
 error handling, CI-gated eval, monitoring, Docker packaging, demo.
+
+---
+
+## Day 11 — Error handling pass
+
+**Built:**
+- `app/errors.py` — global exception handler: unhandled exceptions now
+  return structured JSON (`{"error": "internal_server_error", ...}`)
+  instead of raw tracebacks that leak implementation details
+- Input validation in `/ingest` for empty files and corrupted PDFs
+- 4 new tests in `test_error_handling.py`: empty file upload, corrupted
+  PDF, missing required fields, unsupported file extension — all return
+  clear, structured errors instead of crashing
+
+**Design note:** this is the unglamorous 80% of real deployment. Every
+individual component already handled its own expected errors, but
+UNEXPECTED failures (a library crash, a malformed payload shape nobody
+anticipated) were producing raw 500s. The global handler is the safety
+net beneath the specific catches.
+
+---
+
+## Day 12 — Eval harness wired into CI
+
+**Built:**
+- Added a separate `eval` job in `.github/workflows/tests.yml` that
+  generates the golden dataset and runs `eval/run_eval.py` as a CI gate
+- This is deliberately separate from `pytest`: unit tests check "does
+  the code work," the eval harness checks "does the system produce good
+  answers." Both must pass to merge. A change that passes all unit
+  tests but silently regresses classification accuracy gets caught here.
+
+---
+
+## Day 13 — Prometheus metrics + Grafana dashboard
+
+**Built:**
+- `app/metrics.py` — four Prometheus metrics, each answering a question
+  an operator would actually ask:
+  - `claimsight_ingest_total` (counter): throughput by tenant and type
+  - `claimsight_ingest_duration_seconds` (histogram): latency by
+    extraction method (native vs OCR)
+  - `claimsight_review_queue_depth` (gauge): pending items per tenant
+  - `claimsight_extraction_confidence` (histogram): confidence score
+    distribution — if this shifts left over time, the pipeline is
+    degrading
+- `/metrics` endpoint serving Prometheus-formatted metrics
+- `monitoring/prometheus.yml` — scrape config targeting the API
+- `monitoring/grafana_dashboard.json` — 5-panel dashboard: total
+  ingested, rate by tenant, p95 latency, queue depth, confidence
+  distribution
+- `docker-compose.yml` updated with Prometheus and Grafana services
+  fully enabled (no longer commented out)
+- `prometheus-client` added to `requirements.txt`
+
+---
+
+## Day 14 — Full pipeline integration test
+
+**Built:**
+- `tests/test_integration.py` — 6 tests running the ENTIRE pipeline
+  (upload → OCR → classify → scope check → extract → confidence →
+  review routing → search) for both tenants, proving:
+  - Acme gets full extraction on accident reports and medical bills
+  - Beta gets full extraction on accident reports but correctly rejects
+    medical bills as out-of-scope (extraction doesn't run at all)
+  - The same minimal document triggers review for both tenants, but
+    using their own different configured thresholds (0.85 vs 0.70)
+  - Search isolation holds: documents indexed for one tenant never
+    appear in another's results
+
+This is the test to point to when asked "how do you know multi-tenancy
+works end-to-end" — it exercises every layer of isolation in one pass.
+
+---
+
+## Day 15 — Final packaging
+
+**Built:**
+- `docker-compose.yml` finalized: one-command `docker compose up
+  --build` starts API + Prometheus + Grafana
+- README updated to reflect the completed state
+- All 91 tests passing, eval 10/10, CI green with both pytest and eval
+  gates
+
+**Final counts:**
+- 91 automated tests
+- 10/10 golden dataset eval accuracy
+- 2 real tenants with genuinely different behavior
+- 15 daily entries in PROGRESS.md
+- 5 entries in MISTAKES.md, each with root cause and category
+- CI: pytest + eval harness, both gating
+
+---
+
+**Project complete.** The remaining Week 4 items from the original plan
+(recording a demo, updating the resume's project section with real
+numbers) are tasks for the builder, not code tasks.
